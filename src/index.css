@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Ensure the extension root has maximum z-index and proper isolation */
+.extension-root {
+  position: fixed !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Custom utility classes */
+@layer utilities {
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+  
+  .z-max {
+    z-index: 2147483647;
+  }
+}
+
+/* Reset any potential conflicts with page styles for our overlay */
+.extension-root * {
+  box-sizing: border-box !important;
+}
+
+/* Ensure Tailwind classes work properly in the injected content */
+.extension-root .fixed {
+  position: fixed !important;
+}
+
+.extension-root .z-\[999999\] {
+  z-index: 999999 !important;
+}

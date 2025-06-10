@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "Code n' Pipes",
+  "description": "Automating the building services industry one professional at a time.",
+  "version": "1.0",
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_title": "Toggle Code n' Pipes Overlay",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "permissions": [
+    "scripting",
+    "activeTab",
+    "tabs",
+    "bookmarks"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Toggle the overlay"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["*.js", "*.css", "icon.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "options_page": "settings.html"
+}
