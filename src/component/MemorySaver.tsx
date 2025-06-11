@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef } from "react";
 import pdfToText from "react-pdftotext";
 import '../index.css';
 
-
 type ScrapedMemory = {
   title: string;
   bodyText: string;
@@ -13,6 +12,7 @@ type ScrapedMemory = {
   pdfUrl?: string;
   pageCount?: number;
 };
+
 async function extractText(file: File): Promise<string> {
     try {
       const text = await pdfToText(file);
@@ -23,7 +23,6 @@ async function extractText(file: File): Promise<string> {
       throw new Error("Failed to extract text from PDF");
     }
 }
-
 
 const scrapePage = (): ScrapedMemory => {
   // Try to find embedded PDF URL in iframe or embed tags or object tags
@@ -38,22 +37,61 @@ const scrapePage = (): ScrapedMemory => {
     }
   }
 
+  // Check if the current URL is directly a PDF
+  const currentUrl = window.location.href;
+  const isPdfUrl = currentUrl.toLowerCase().includes('.pdf');
+  
+  if (isPdfUrl && !pdfUrl) {
+    pdfUrl = currentUrl;
+  }
+
+  // Get page content, but exclude extension overlays and common overlay selectors
+  let bodyText = '';
+  
+  if (pdfUrl || isPdfUrl) {
+    // For PDF pages, don't try to extract text from DOM since it's likely a PDF viewer
+    bodyText = `PDF document detected at: ${pdfUrl || currentUrl}`;
+  } else {
+    // For regular webpages, get text but exclude overlays
+    const excludeSelectors = [
+      '[class*="overlay"]',
+      '[class*="modal"]', 
+      '[class*="popup"]',
+      '[class*="extension"]',
+      '[id*="overlay"]',
+      '[id*="modal"]',
+      '[id*="extension"]',
+      '.chrome-extension',
+      '[data-extension]'
+    ];
+    
+    // Clone the body to avoid modifying the original
+    const bodyClone = document.body.cloneNode(true) as HTMLElement;
+    
+    // Remove overlay elements
+    excludeSelectors.forEach(selector => {
+      const elements = bodyClone.querySelectorAll(selector);
+      elements.forEach(el => el.remove());
+    });
+    
+    bodyText = bodyClone.innerText.slice(0, 1000);
+  }
+
   return {
     title: document.title || "Untitled Page",
-    bodyText: document.body.innerText.slice(0, 1000),
+    bodyText: bodyText,
     links: Array.from(document.links).map(link => link.href),
-    url: window.location.href,
+    url: currentUrl,
     timestamp: Date.now(),
-    type: pdfUrl ? 'pdf' : 'webpage',
+    type: pdfUrl || isPdfUrl ? 'pdf' : 'webpage',
     ...(pdfUrl ? { pdfUrl } : {}),
   };
 };
 
-
 const saveMemoryToAPI = async (
   memory: ScrapedMemory
 ): Promise<{ status: string; message: string }> => {
-  console.log('[API] Saving memory:', memory); // simulate use
+  console.log('[API] Saving memory:', memory);
   await new Promise(resolve => setTimeout(resolve, 1000));
   return { status: "success", message: "Memory saved successfully!" };
 };
@@ -66,112 +104,144 @@ const MemorySaver: React.FC = () => {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-useEffect(() => {
-  const scraped = scrapePage();
-  console.log("Scraped current webpage:", scraped);
-  setScrapedPreview(scraped);
-}, []);
+  useEffect(() => {
+    const scraped = scrapePage();
+    console.log("Scraped current webpage:", scraped);
+    setScrapedPreview(scraped);
+  }, []);
 
+  const handleSave = async () => {
+    if (!scrapedPreview) return;
+    setSaveStatus("saving");
+    setSaveMessage("Processing...");
 
-const handleSave = async () => {
-  if (!scrapedPreview) return;
-  setSaveStatus("saving");
+    try {
+      let finalPreview = scrapedPreview;
+      console.log("Saving memory:", scrapedPreview);
+      
+      // Handle PDF extraction
+      if (scrapedPreview.type === "pdf") {
+        let pdfUrlToFetch = scrapedPreview.pdfUrl || scrapedPreview.url;
+        
+        setSaveMessage("Fetching PDF content...");
+        console.log("Fetching PDF from URL:", pdfUrlToFetch);
+        
+        try {
+          const response = await fetch(pdfUrlToFetch, {
+            mode: 'cors',
+            headers: {
+              'Accept': 'application/pdf'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
+          }
+          
+          const contentType = response.headers.get("content-type") || "";
+          console.log("PDF content-type:", contentType);
+          
+          if (!contentType.includes("pdf") && !contentType.includes("application/octet-stream")) {
+            throw new Error(`URL does not point to a PDF file, content-type: ${contentType}`);
+          }
+          
+          setSaveMessage("Extracting text from PDF...");
+          const blob = await response.blob();
+          const file = new File([blob], "document.pdf", { type: "application/pdf" });
 
-  try {
-    let finalPreview = scrapedPreview;
-    console.log("Saving memory:", scrapedPreview);
-    if (scrapedPreview.type === "pdf" && scrapedPreview.pdfUrl) {
-      // Fetch the real PDF file URL found inside the viewer page
-      const response = await fetch(scrapedPreview.pdfUrl);
-      if (!response.ok) throw new Error(`Failed to fetch PDF: ${response.statusText}`);
-      console.log("Fetched PDF from URL:", scrapedPreview.pdfUrl);
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("pdf")) {
-        throw new Error(`PDF URL does not point to a PDF file, content-type: ${contentType}`);
+          const extractedText = await extractText(file);
+          console.log("Extracted text from PDF (first 300 chars):", extractedText.slice(0, 300));
+          
+          finalPreview = {
+            ...scrapedPreview,
+            bodyText: extractedText || "Could not extract readable text from PDF",
+            title: extractedText ? 
+              (extractedText.split('\n').find(line => line.trim().length > 0) || scrapedPreview.title).slice(0, 100) : 
+              scrapedPreview.title
+          };
+          
+        } catch (pdfError) {
+          console.error("PDF processing error:", pdfError);
+          // Fallback: save the PDF reference without extracted text
+          finalPreview = {
+            ...scrapedPreview,
+            bodyText: `PDF document at: ${pdfUrlToFetch}\n\nError extracting text: ${pdfError.message}`,
+          };
+        }
       }
-      console.log("PDF content-type is valid:", contentType);
-      const blob = await response.blob();
-      const file = new File([blob], "document.pdf", { type: "application/pdf" });
 
-      const extractedText = await extractText(file);
-      console.log("Extracted text from PDF:", extractedText.slice(0, 300));
-      finalPreview = {
-        ...scrapedPreview,
-        bodyText: extractedText || "Could not extract readable text from PDF",
+      setSaveMessage("Saving to memory...");
+      const res = await saveMemoryToAPI(finalPreview);
+      setSaveStatus(res.status === "success" ? "success" : "error");
+      setSaveMessage(res.message);
+
+      if (res.status === "success") {
+        setSavedItems((prev) => {
+          const alreadyExists = prev.some(
+            (item) => item.url === finalPreview.url && Math.abs(item.timestamp - finalPreview.timestamp) < 5000
+          );
+          return alreadyExists ? prev : [finalPreview, ...prev];
+        });
+      }
+    } catch (error: any) {
+      console.error("Error saving memory:", error);
+      setSaveStatus("error");
+      setSaveMessage(`Error: ${error.message}`);
+    } finally {
+      setTimeout(() => {
+        setSaveStatus("idle");
+        setSaveMessage("");
+      }, 3000);
+    }
+  };
+
+  const handlePDFUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    console.log('[Upload Triggered]', file);
+    if (!file || file.type !== 'application/pdf') {
+      alert('Please select a PDF file');
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveMessage("Extracting text from PDF...");
+    try {
+      const text = await extractText(file);
+      console.log('[Extracted]', { textSnippet: text.slice(0, 300) });
+
+      const pdfMemory: ScrapedMemory = {
+        title: file.name.replace('.pdf', ''),
+        bodyText: text || "Could not extract readable text from this PDF",
+        links: [],
+        url: `file://${file.name}`,
+        timestamp: Date.now(),
+        type: 'pdf',
       };
 
-    } else if (scrapedPreview.type === "webpage") {
-      // Just save webpage as is
-      finalPreview = scrapedPreview;
+      setScrapedPreview(pdfMemory);
+      setSaveStatus("success");
+      setSaveMessage("PDF text extracted successfully!");
+
+      setTimeout(async () => {
+        const res = await saveMemoryToAPI(pdfMemory);
+        console.log('[Save result]', res);
+        if (res.status === "success") {
+          setSavedItems((prev) => [pdfMemory, ...prev]);
+        }
+      }, 500);
+
+    } catch (error) {
+      console.error('[PDF Extraction Error]', error);
+      setSaveStatus("error");
+      setSaveMessage("Failed to extract text from PDF");
     }
 
-    const res = await saveMemoryToAPI(finalPreview);
-    setSaveStatus(res.status === "success" ? "success" : "error");
-    setSaveMessage(res.message);
-
-    if (res.status === "success") {
-      setSavedItems((prev) => {
-        const alreadyExists = prev.some(
-          (item) => item.url === finalPreview.url && item.timestamp === finalPreview.timestamp
-        );
-        return alreadyExists ? prev : [finalPreview, ...prev];
-      });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
-  } catch (error: any) {
-    console.error("Error saving memory:", error);
-    setSaveStatus("error");
-    setSaveMessage(error.message);
-  } finally {
-    setTimeout(() => setSaveStatus("idle"), 3000);
-  }
-};
+  };
 
-
-const handlePDFUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  const file = event.target.files?.[0];
-  console.log('[Upload Triggered]', file);
-  if (!file || file.type !== 'application/pdf') {
-    alert('Please select a PDF file');
-    return;
-  }
-
-  setSaveStatus("saving");
-  setSaveMessage("Extracting text from PDF...");
-  try {
-    const text = await extractText(file);
-    console.log('[Extracted]', { textSnippet: text.slice(0, 300) });
-
-    const pdfMemory: ScrapedMemory = {
-      title: file.name.replace('.pdf', ''),
-      bodyText: text || "Could not extract readable text from this PDF",
-      links: [],
-      url: `file://${file.name}`,
-      timestamp: Date.now(),
-      type: 'pdf',
-    };
-
-    setScrapedPreview(pdfMemory);
-    setSaveStatus("success");
-
-    setTimeout(async () => {
-      const res = await saveMemoryToAPI(pdfMemory);
-      console.log('[Save result]', res);
-      if (res.status === "success") {
-        setSavedItems((prev) => [pdfMemory, ...prev]);
-      }
-    }, 500);
-
-  } catch (error) {
-    console.error('[PDF Extraction Error]', error);
-    setSaveStatus("error");
-    setSaveMessage("Failed to extract text from PDF");
-  }
-
-  if (fileInputRef.current) {
-    fileInputRef.current.value = '';
-  }
-};
-return (
+  return (
     <div className="space-y-6 max-w-4xl mx-auto p-6">
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -198,12 +268,12 @@ return (
           }`}
         >
           {saveStatus === "saving"
-            ? "Saving..."
+            ? "Processing..."
             : saveStatus === "success"
             ? "Saved!"
             : saveStatus === "error"
             ? "Error"
-            : "📄 Save Current Page"}
+            : scrapedPreview?.type === 'pdf' ? "📋 Extract & Save PDF" : "📄 Save Current Page"}
         </button>
 
         <div className="relative">
@@ -245,6 +315,11 @@ return (
           <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
             {scrapedPreview.bodyText}
           </p>
+          {scrapedPreview.type === 'pdf' && (
+            <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+              Click "Extract & Save PDF" to process the PDF content
+            </div>
+          )}
         </div>
       )}
 
