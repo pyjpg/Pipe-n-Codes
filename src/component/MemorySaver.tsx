@@ -8,9 +8,20 @@ type ScrapedMemory = {
   links: string[];
   url: string;
   timestamp: number;
-  type: 'webpage' | 'pdf';
+  type: 'webpage' | 'pdf' | 'application/pdf';
   pdfUrl?: string;
   pageCount?: number;
+};
+
+// API response types
+type APIResponse = {
+  status: string;
+  message: string;
+  memory_id?: string;
+  embedding_info?: {
+    chunks_created: number;
+    vector_dimension: number;
+  };
 };
 
 async function extractText(file: File): Promise<string> {
@@ -90,10 +101,63 @@ const scrapePage = (): ScrapedMemory => {
 
 const saveMemoryToAPI = async (
   memory: ScrapedMemory
-): Promise<{ status: string; message: string }> => {
-  console.log('[API] Saving memory:', memory);
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return { status: "success", message: "Memory saved successfully!" };
+): Promise<APIResponse> => {
+  console.log('[API] Saving memory to vector database:', memory);
+  
+  try {
+    const response = await fetch('http://127.0.0.1:8000/memory/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        title: memory.title,
+        content: memory.bodyText,
+        source_url: memory.url,
+        content_type: memory.type,
+        metadata: {
+          timestamp: memory.timestamp,
+          links: memory.links,
+          ...(memory.pdfUrl && { pdf_url: memory.pdfUrl }),
+          ...(memory.pageCount && { page_count: memory.pageCount }),
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('[API] Vector database response:', result);
+    
+    return {
+      status: "success",
+      message: `Memory saved and embedded! ${result.embedding_info ? 
+        `Created ${result.embedding_info.chunks_created} chunks with ${result.embedding_info.vector_dimension}D vectors.` : 
+        'Successfully processed and stored in vector database.'}`,
+      memory_id: result.memory_id,
+      embedding_info: result.embedding_info
+    };
+    
+  } catch (error: any) {
+    console.error('[API] Error saving to vector database:', error);
+    
+    // Check if it's a network error (API server not running)
+    if (error.message.includes('fetch')) {
+      return {
+        status: "error",
+        message: "Cannot connect to vector database API. Is the server running on http://127.0.0.1:8000?"
+      };
+    }
+    
+    return {
+      status: "error",
+      message: `Failed to save to vector database: ${error.message}`
+    };
+  }
 };
 
 const MemorySaver: React.FC = () => {
@@ -102,8 +166,11 @@ const MemorySaver: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState("");
   const [savedItems, setSavedItems] = useState<ScrapedMemory[]>([]);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [apiResponse, setApiResponse] = useState<APIResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const isPdf = 
+     scrapedPreview?.type === "pdf" 
+  || scrapedPreview?.type === "application/pdf";
   useEffect(() => {
     const scraped = scrapePage();
     console.log("Scraped current webpage:", scraped);
@@ -114,13 +181,14 @@ const MemorySaver: React.FC = () => {
     if (!scrapedPreview) return;
     setSaveStatus("saving");
     setSaveMessage("Processing...");
+    setApiResponse(null);
 
     try {
       let finalPreview = scrapedPreview;
       console.log("Saving memory:", scrapedPreview);
       
       // Handle PDF extraction
-      if (scrapedPreview.type === "pdf") {
+      if (isPdf) {
         let pdfUrlToFetch = scrapedPreview.pdfUrl || scrapedPreview.url;
         
         setSaveMessage("Fetching PDF content...");
@@ -170,10 +238,11 @@ const MemorySaver: React.FC = () => {
         }
       }
 
-      setSaveMessage("Saving to memory...");
+      setSaveMessage("Embedding content in vector database...");
       const res = await saveMemoryToAPI(finalPreview);
       setSaveStatus(res.status === "success" ? "success" : "error");
       setSaveMessage(res.message);
+      setApiResponse(res);
 
       if (res.status === "success") {
         setSavedItems((prev) => {
@@ -191,7 +260,8 @@ const MemorySaver: React.FC = () => {
       setTimeout(() => {
         setSaveStatus("idle");
         setSaveMessage("");
-      }, 3000);
+        setApiResponse(null);
+      }, 5000);
     }
   };
 
@@ -205,6 +275,8 @@ const MemorySaver: React.FC = () => {
 
     setSaveStatus("saving");
     setSaveMessage("Extracting text from PDF...");
+    setApiResponse(null);
+    
     try {
       const text = await extractText(file);
       console.log('[Extracted]', { textSnippet: text.slice(0, 300) });
@@ -219,21 +291,24 @@ const MemorySaver: React.FC = () => {
       };
 
       setScrapedPreview(pdfMemory);
-      setSaveStatus("success");
-      setSaveMessage("PDF text extracted successfully!");
+      setSaveMessage("PDF text extracted! Now embedding in vector database...");
 
-      setTimeout(async () => {
-        const res = await saveMemoryToAPI(pdfMemory);
-        console.log('[Save result]', res);
-        if (res.status === "success") {
-          setSavedItems((prev) => [pdfMemory, ...prev]);
-        }
-      }, 500);
+      // Automatically save to vector database after successful extraction
+      const res = await saveMemoryToAPI(pdfMemory);
+      console.log('[Save result]', res);
+      
+      setSaveStatus(res.status === "success" ? "success" : "error");
+      setSaveMessage(res.message);
+      setApiResponse(res);
+      
+      if (res.status === "success") {
+        setSavedItems((prev) => [pdfMemory, ...prev]);
+      }
 
     } catch (error) {
-      console.error('[PDF Extraction Error]', error);
+      console.error('[PDF Processing Error]', error);
       setSaveStatus("error");
-      setSaveMessage("Failed to extract text from PDF");
+      setSaveMessage("Failed to process PDF");
     }
 
     if (fileInputRef.current) {
@@ -248,7 +323,7 @@ const MemorySaver: React.FC = () => {
           Memory Saver
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Save web pages and extract text from PDFs
+          Save web pages and PDFs to vector database for semantic search
         </p>
       </div>
 
@@ -270,10 +345,10 @@ const MemorySaver: React.FC = () => {
           {saveStatus === "saving"
             ? "Processing..."
             : saveStatus === "success"
-            ? "Saved!"
+            ? "Saved to Vector DB!"
             : saveStatus === "error"
             ? "Error"
-            : scrapedPreview?.type === 'pdf' ? "📋 Extract & Save PDF" : "📄 Save Current Page"}
+            : scrapedPreview?.type === 'pdf' ? "🧠 Extract & Embed PDF" : "🧠 Save to Vector Database"}
         </button>
 
         <div className="relative">
@@ -285,7 +360,7 @@ const MemorySaver: React.FC = () => {
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
           <button className="w-full px-6 py-3 rounded-lg font-medium bg-purple-600 text-white hover:bg-purple-700 hover:shadow-lg transition-all">
-            📋 Upload PDF
+            📋 Upload & Embed PDF
           </button>
         </div>
       </div>
@@ -299,6 +374,13 @@ const MemorySaver: React.FC = () => {
             : "bg-blue-50 text-blue-800 border border-blue-200"
         }`}>
           {saveMessage}
+          {apiResponse?.embedding_info && (
+            <div className="mt-2 text-xs">
+              <strong>Vector Details:</strong> {apiResponse.embedding_info.chunks_created} chunks, 
+              {apiResponse.embedding_info.vector_dimension}D embeddings
+              {apiResponse.memory_id && <span className="ml-2"><strong>ID:</strong> {apiResponse.memory_id}</span>}
+            </div>
+          )}
         </div>
       )}
 
@@ -317,7 +399,7 @@ const MemorySaver: React.FC = () => {
           </p>
           {scrapedPreview.type === 'pdf' && (
             <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-              Click "Extract & Save PDF" to process the PDF content
+              Click "Extract & Embed PDF" to process and store in vector database
             </div>
           )}
         </div>
@@ -361,6 +443,9 @@ const MemorySaver: React.FC = () => {
                         <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                           {new Date(item.timestamp).toLocaleString()}
                           {item.type === 'pdf' && item.pageCount && ` • ${item.pageCount} pages`}
+                          <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded">
+                            ✓ Embedded
+                          </span>
                         </div>
                         {!isExpanded && (
                           <div className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-2">
