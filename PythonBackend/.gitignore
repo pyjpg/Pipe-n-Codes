@@ -1,0 +1,9 @@
+/database/__pycache__
+/venv
+.env
+/__pycache__
+/chroma_chat_db
+/chroma_db
+/chroma_pdf_db
+/data
+/models/__pycache__
