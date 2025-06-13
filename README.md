@@ -1,7 +1,7 @@
 # Pipes N' Code
 **Building Services Automation Terminal**
 
-Intelligent AI system for mechanical engineering workflows using Python, Cassandra NoSQL, VectorDB, and LangChain.
+Intelligent Agentic AI RAG system for mechanical engineering workflows using Python, Cassandra NoSQL, VectorDB, and LangChain.
 
 ---
 
