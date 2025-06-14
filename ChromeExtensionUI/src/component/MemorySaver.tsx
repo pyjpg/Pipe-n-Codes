@@ -113,11 +113,11 @@ const saveMemoryToAPI = async (
       },
       body: JSON.stringify({
         title: memory.title,
-        content: memory.bodyText,
-        source_url: memory.url,
+        bodyText: memory.bodyText,
+        url: memory.url,
         content_type: memory.type,
+        timestamp: memory.timestamp, // Move timestamp to top level
         metadata: {
-          timestamp: memory.timestamp,
           links: memory.links,
           ...(memory.pdfUrl && { pdf_url: memory.pdfUrl }),
           ...(memory.pageCount && { page_count: memory.pageCount }),
