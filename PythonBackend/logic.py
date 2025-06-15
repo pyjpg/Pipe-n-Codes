@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, List
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -9,6 +9,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_cohere import CohereEmbeddings
 from cassandra.cluster import Cluster
 from models.cassandra_history import CassandraChatMessageHistory
+from langchain_core.documents import Document
 import os
 from dotenv import load_dotenv
 
@@ -85,8 +86,7 @@ def retrieve(question: str, session_id: str) -> str:
         print("⚠️  No relevant chunks found in chat or PDFs for:", question)
 
     # 4) Join them into a single prompt string (e.g., take up to 500 chars each)
-    docs_text = "\n\n".join(doc.page_content[:500] for doc in combined)
-    return docs_text
+    return combined
 # --- Fallback Chain ---
 llm = ChatCohere(model="command-r", temperature=0)
 llm_fallback_chain = (
@@ -217,54 +217,42 @@ def list_active_sessions():
     return list(_history_store.keys())
 
 # --- Main Pipeline Function ---
-def run_conversational_rag(question: str, documents: str, session_id: str):
-    """Main function to run the conversational RAG pipeline with debug logging"""
-    
-    print(f"=== DEBUG: Processing question: {question}")
-    print(f"=== DEBUG: Documents length: {len(documents)} characters")
-    print(f"=== DEBUG: Documents preview: {documents[:200]}...")
-    
-    # Step 1: Try RAG with conversation history
-    rag_response = conversational_rag_chain.invoke(
+def run_conversational_rag(question: str, documents: List[Document], session_id: str):
+    context = "\n\n".join(doc.page_content[:500] for doc in documents)
+    doc_metadata = [
         {
-            "question": question,
-            "documents": documents
-        },
+            "source": doc.metadata.get("source"),
+            "page": doc.metadata.get("page"),
+            "chunk_id": doc.metadata.get("chunk_id", None),
+            "summary": doc.page_content[:200]  
+        }
+        for doc in documents
+    ]
+    
+    # Run RAG
+    rag_response = conversational_rag_chain.invoke(
+        {"question": question, "documents": context},
         config={"configurable": {"session_id": session_id}}
     )
-    
-    print(f"=== DEBUG: RAG Response: {rag_response}")
-    
-    # Step 2: Check for hallucinations
+
     hallucination_result = hallucination_check_chain.invoke({
-        "documents": documents,
+        "documents": context,
         "generation": rag_response
     })
-    
-    print(f"=== DEBUG: Hallucination score: {hallucination_result.binary_score}")
-    
-    # Step 3: Use fallback if hallucination detected
+
     if hallucination_result.binary_score == "no":
-        print("=== DEBUG: Using RAG response")
         final_answer = rag_response
         source = "rag"
     else:
-        print("=== DEBUG: Using fallback due to hallucination detection")
-        final_answer = conversational_fallback_chain.invoke(
-            {"question": question},
-            config={"configurable": {"session_id": session_id}}
-        )
+        final_answer = fallback(question, session_id)
         source = "fallback"
-        
-    
-    # Step 4: Simplify for UI
-    simplified_answer = simplify_chain.invoke({"answer": final_answer})
-    
+
+    simplified_answer = simplify(final_answer)
+
     return {
         "answer": final_answer,
         "simplified_answer": simplified_answer,
         "source": source,
         "hallucination_score": hallucination_result.binary_score,
-        "retrieved_docs_length": len(documents),  # Add debug info
-        "rag_response": rag_response if source == "fallback" else None  # Include original RAG response when fallback is used
+        "documents_used": doc_metadata  
     }

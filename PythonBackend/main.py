@@ -92,7 +92,7 @@ def rag_answer(req: QuestionRequest):
     try:
         # Step 1: Retrieve relevant documents
         documents = logic.retrieve(req.question, req.session_id)
-        print(documents)  # Debugging line to check retrieved documents
+        print(f"DEBUG: Retrieved {len(documents)} documents")
         # Step 2: Run conversational RAG pipeline with session management
         result = logic.run_conversational_rag(
             question=req.question,
@@ -106,7 +106,8 @@ def rag_answer(req: QuestionRequest):
             "raw_answer": result["answer"],
             "source": result["source"],
             "hallucinated": (result["hallucination_score"] == "yes"),
-            "session_id": req.session_id
+            "session_id": req.session_id,
+            "documents_used": result["documents_used"]
         }
 
     except Exception as e:
