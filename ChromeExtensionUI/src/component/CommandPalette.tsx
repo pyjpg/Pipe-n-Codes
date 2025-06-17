@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import RagChat from "./RagChat";
-import MemorySaver from "./MemorySaver";
+import MemorySaver from "./MemorySaver/MemorySaver";
 import '../index.css';
 
 interface CommandPaletteProps {
