@@ -11,14 +11,18 @@ interface ActionButtonsProps {
 export const ActionButtons: React.FC<ActionButtonsProps> = ({
   onSave, onFileUpload, saveStatus, isPdf, fileInputRef
 }) => {
-  const getButtonStyle = () => {
-    switch (saveStatus) {
-      case "saving": return "bg-gray-400 text-white";
-      case "success": return "bg-green-500 text-white";
-      case "error": return "bg-red-500 text-white";
-      default: return "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg";
-    }
-  };
+ const getButtonStyle = () => {
+  switch (saveStatus) {
+    case "saving":
+      return "bg-gray-400 text-white border border-gray-500";
+    case "success":
+      return "bg-green-500 text-white border border-green-700";
+    case "error":
+      return "bg-red-500 text-white border border-red-700";
+    default:
+      return "bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 hover:shadow-lg";
+  }
+}; 
 
   const getButtonText = () => {
     switch (saveStatus) {
@@ -34,7 +38,7 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
       <button
         onClick={onSave}
         disabled={saveStatus === "saving"}
-        className={`px-4 sm:px-6 py-3 rounded-xl font-medium transition-all duration-200 ${getButtonStyle()}`}
+        className={`inline-flex items-center justify-center px-4 py-5 sm:px-6 rounded-xl font-medium shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${getButtonStyle()}`}
       >
         {getButtonText()}
       </button>
@@ -47,7 +51,9 @@ export const ActionButtons: React.FC<ActionButtonsProps> = ({
           onChange={onFileUpload}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
-        <button className="w-full px-6 py-3 rounded-lg font-medium bg-purple-600 text-white hover:bg-purple-700 hover:shadow-lg transition-all">
+        <button
+          className="inline-flex items-center justify-center px-4 py-5 sm:px-6 rounded-xl font-medium shadow transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 border border-purple-700 bg-purple-600 text-white hover:bg-purple-900 hover:shadow-lg cursor-pointer"
+        >
           📋 Upload & Embed PDF
         </button>
       </div>

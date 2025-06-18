@@ -16,19 +16,12 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ onClose }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const tabs = ["Memory", "Ask", "Chat"];
+  const tabs = ["Memory",  "Chat"];
   const inputRef = useRef<HTMLInputElement>(null);
   const paletteRef = useRef<HTMLDivElement>(null);
 
-  const askItems = [
-    "Ask AI: How do I center a div?",
-    "Search documentation", 
-    "Search Stack Overflow",
-    "Find React best practices",
-    "Explain this code pattern"
-  ];
+  
 
-  const items = activeTab === 0 ? askItems : askItems;
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -45,11 +38,12 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ onClose }) => {
       const isInputFocused = document.activeElement === inputRef.current;
 
       // Tab switching with numbers 1-3 (only when input is NOT focused)
-      if (!isInputFocused && e.key >= "1" && e.key <= "3") {
+      if (!isInputFocused && (e.key === "1" || e.key === "2")) {
         e.preventDefault();
-        const tabIndex = parseInt(e.key) - 1;
+         const tabIndex = Math.max(0, Math.min(tabs.length - 1, parseInt(e.key, 10) - 1));
         setActiveTab(tabIndex);
         setHighlightedIndex(0);
+        setQuery("");
       }
 
       // Movement with Ctrl+Arrow keys
@@ -81,20 +75,20 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ onClose }) => {
 
       // Tab navigation (only when not in Chat tab and input is NOT focused)
       if (activeTab !== 2 && !isInputFocused) {
-        if (e.key === "ArrowDown" && items.length > 0) {
+        if (e.key === "ArrowDown" ) {
           e.preventDefault();
-          setHighlightedIndex((prev) => (prev + 1) % items.length);
+          setHighlightedIndex((prev) => (prev + 1) );
         }
-        if (e.key === "ArrowUp" && items.length > 0) {
+        if (e.key === "ArrowUp" ) {
           e.preventDefault();
-          setHighlightedIndex((prev) => (prev - 1 + items.length) % items.length);
+          setHighlightedIndex((prev) => (prev - 1 ) );
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, items.length, activeTab, onClose]);
+  }, [isOpen,  activeTab, onClose]);
 
   // Mouse drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -163,7 +157,7 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ onClose }) => {
       <div className="fixed top-4 left-4 z-60">
         <div className="bg-black/70 text-white px-4 py-2 rounded-lg text-sm backdrop-blur-sm border border-white/20">
           <div className="flex items-center space-x-4">
-            <span><kbd className="bg-white/20 px-1 py-0.5 rounded text-xs">1-3</kbd> tabs</span>
+            <span><kbd className="bg-white/20 px-1 py-0.5 rounded text-xs">1-2</kbd> tabs</span>
             <span><kbd className="bg-white/20 px-1 py-0.5 rounded text-xs">↑↓</kbd> navigate</span>
             <span><kbd className="bg-white/20 px-1 py-0.5 rounded text-xs">Ctrl+↑↓←→</kbd> move</span>
             <span><kbd className="bg-white/20 px-1 py-0.5 rounded text-xs">Ctrl+R</kbd> reset position</span>
@@ -225,44 +219,10 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({ onClose }) => {
           </div>
 
           <div className="p-6">
-            {activeTab === 2 ? (
+            {activeTab === 1 ? (
               <RagChat />
-            ) : activeTab === 0 ? (
+            ) : ( 
               <MemorySaver />
-            ) : (
-              <>
-                {/* Search Input for Ask tab */}
-                <div className="relative mb-6">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Ask a question or search..."
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border bg-white/40 dark:bg-gray-800/40 border-gray-300/30 dark:border-gray-600/30 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent backdrop-blur-sm transition-all"
-                  />
-                </div>
-
-                <ul className="space-y-2">
-                  {items.map((item, index) => (
-                    <li
-                      key={index}
-                      className={`px-4 py-2 rounded cursor-pointer ${
-                        index === highlightedIndex
-                          ? "bg-blue-500 text-white"
-                          : "hover:bg-gray-200 dark:hover:bg-gray-700"
-                      }`}
-                    >
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </>
             )}
           </div>
         </div>
