@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import '../index.css';
+
 type RagResponse = {
   answer: string;
   source: string;
   hallucinated: boolean;
-  session_id: string; // Added session_id to response type
+  session_id: string;
   error?: string;
 };
 
@@ -21,7 +22,6 @@ const RagChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  // Added session_id state - generates a unique ID for this chat session
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -35,7 +35,7 @@ const RagChat: React.FC = () => {
         },
         body: JSON.stringify({ 
           question,
-          session_id: sessionId // Added session_id to the request body
+          session_id: sessionId
         }),
       });
 
@@ -53,7 +53,7 @@ const RagChat: React.FC = () => {
         answer: data.answer,
         source: data.source,
         hallucinated: data.hallucinated,
-        session_id: data.session_id, // Include session_id in return
+        session_id: data.session_id,
       };
     } catch (error) {
       console.error("Error querying RAG:", error);
@@ -73,29 +73,25 @@ const RagChat: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Log the session ID when component mounts for debugging
   useEffect(() => {
     console.log("Chat session ID:", sessionId);
   }, [sessionId]);
 
-  // Prevent parent keyboard shortcuts when textarea is focused
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isTextareaFocused = document.activeElement === textareaRef.current;
       
       if (isTextareaFocused) {
-        // Stop propagation for number keys 1-3 to prevent tab switching
         if (e.key >= "1" && e.key <= "3") {
           e.stopPropagation();
         }
-        // Stop propagation for arrow keys to prevent parent navigation
         if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && !e.ctrlKey) {
           e.stopPropagation();
         }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown, true); // Use capture phase
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, []);
 
@@ -141,7 +137,6 @@ const RagChat: React.FC = () => {
     }
   };
 
-  // Optional: Add a function to clear session history
   const clearSession = async () => {
     try {
       await fetch(`http://127.0.0.1:8000/session/${sessionId}`, {
@@ -156,7 +151,6 @@ const RagChat: React.FC = () => {
 
   return (
     <div className="flex flex-col max-h-[calc(100vh-100px)] h-full">
-      {/* Optional: Add a header showing session info and clear button */}
       <div className="flex justify-between items-center mb-2 px-2 text-xs text-gray-500">
         <span>Session: {sessionId}</span>
         <button 
@@ -194,14 +188,62 @@ const RagChat: React.FC = () => {
                   : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"
               }`}
             >
-              <div className="prose dark:prose-invert max-w-none text-sm text-left">
+              <div className="w-full">
                 <ReactMarkdown
+                  className="prose dark:prose-invert max-w-none prose-sm"
                   components={{
+                    // Fix paragraph alignment and spacing
+                    p: ({ children }) => (
+                      <p className="mb-2 last:mb-0 text-left leading-relaxed whitespace-pre-wrap">{children}</p>
+                    ),
+                    // Fix list styling and alignment
                     ul: ({ children }) => (
-                      <ul className="list-none space-y-1">{children}</ul>
+                      <ul className="list-disc list-inside mb-2 last:mb-0 text-left space-y-1">{children}</ul>
+                    ),
+                    ol: ({ children }) => (
+                      <ol className="list-decimal list-inside mb-2 last:mb-0 text-left space-y-1">{children}</ol>
                     ),
                     li: ({ children }) => (
-                      <li className="flex items-start">{children}</li>
+                      <li className="text-left leading-relaxed">{children}</li>
+                    ),
+                    // Fix headings
+                    h1: ({ children }) => (
+                      <h1 className="text-lg font-bold mb-2 text-left">{children}</h1>
+                    ),
+                    h2: ({ children }) => (
+                      <h2 className="text-base font-bold mb-2 text-left">{children}</h2>
+                    ),
+                    h3: ({ children }) => (
+                      <h3 className="text-sm font-bold mb-1 text-left">{children}</h3>
+                    ),
+                    // Fix code blocks
+                    code: ({ children, className }) => {
+                      const isInlineCode = !className;
+                      return isInlineCode ? (
+                        <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-xs font-mono">
+                          {children}
+                        </code>
+                      ) : (
+                        <code className="block bg-gray-200 dark:bg-gray-700 p-2 rounded text-xs font-mono whitespace-pre-wrap overflow-x-auto">
+                          {children}
+                        </code>
+                      );
+                    },
+                    // Fix blockquotes
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-left mb-2">
+                        {children}
+                      </blockquote>
+                    ),
+                    // Handle line breaks properly
+                    br: () => <br />,
+                    // Fix strong/bold text
+                    strong: ({ children }) => (
+                      <strong className="font-semibold">{children}</strong>
+                    ),
+                    // Fix emphasis/italic text
+                    em: ({ children }) => (
+                      <em className="italic">{children}</em>
                     ),
                   }}
                 >
